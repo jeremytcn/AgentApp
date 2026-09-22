@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Availability Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F4F6F3; --paper-raised: #FFFFFF; --ink: #142520; --ink-soft: #4B5C55; --ink-faint: #8B978F;
+    --line: #DCE3DD; --line-soft: #E9EDE7; --accent: #2F6F5E; --accent-soft: #E4EFEB; --accent-ink: #1D453A;
+    --st-available: #2F6F5E; --st-available-bg: #E4EFEB;
+    --st-unconfirmed: #B4790E; --st-unconfirmed-bg: #F6ECD9;
+    --st-arrived: #2A5C9A; --st-arrived-bg: #E2EBF5;
+    --st-confirmed: #4B4A9E; --st-confirmed-bg: #E7E6F4;
+    --st-unavailable: #A23B32; --st-unavailable-bg: #F4E1DE;
+    --radius: 10px; --font-head: 'Space Grotesk', sans-serif; --font-body: 'IBM Plex Sans', sans-serif; --font-num: 'IBM Plex Mono', monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #121815; --paper-raised: #1A2320; --ink: #EAF0EC; --ink-soft: #A9B8B0; --ink-faint: #71827A;
+      --line: #2A3733; --line-soft: #223028; --accent: #5FB79B; --accent-soft: #1E3831; --accent-ink: #9FDFC7;
+      --st-available: #5FB79B; --st-available-bg: #1E3831;
+      --st-unconfirmed: #E3AC55; --st-unconfirmed-bg: #3A2E17;
+      --st-arrived: #7BA8DE; --st-arrived-bg: #1E2C3E;
+      --st-confirmed: #A6A3E8; --st-confirmed-bg: #292752;
+      --st-unavailable: #E28579; --st-unavailable-bg: #3B211E;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #121815; --paper-raised: #1A2320; --ink: #EAF0EC; --ink-soft: #A9B8B0; --ink-faint: #71827A;
+    --line: #2A3733; --line-soft: #223028; --accent: #5FB79B; --accent-soft: #1E3831; --accent-ink: #9FDFC7;
+    --st-available: #5FB79B; --st-available-bg: #1E3831;
+    --st-unconfirmed: #E3AC55; --st-unconfirmed-bg: #3A2E17;
+    --st-arrived: #7BA8DE; --st-arrived-bg: #1E2C3E;
+    --st-confirmed: #A6A3E8; --st-confirmed-bg: #292752;
+    --st-unavailable: #E28579; --st-unavailable-bg: #3B211E;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body); }
+  body { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  #app { min-height: 100%; }
+  .shell { max-width: 980px; margin: 0 auto; padding: 28px 20px 64px; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 26px; }
+  .topbar h1 { font-family: var(--font-head); font-weight: 600; font-size: 26px; letter-spacing: -0.01em; margin: 0 0 6px; }
+  .conn-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); }
+  .conn-pip { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-faint); flex-shrink: 0; }
+  .conn-pip.on { background: var(--st-available); }
+  .conn-pip.off { background: var(--st-unavailable); }
+  .topbar-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+  button { font-family: var(--font-body); font-size: 13.5px; cursor: pointer; border-radius: 8px; border: 1px solid transparent; }
+  .btn-primary { background: var(--accent); color: #F4FBF8; padding: 9px 16px; font-weight: 600; border: none; transition: opacity .15s; }
+  .btn-primary:hover { opacity: .88; }
+  .btn-primary:disabled { opacity: .5; cursor: default; }
+  .btn-primary .spin { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(244,251,248,.35); border-top-color: #F4FBF8; margin-right: 7px; vertical-align: -2px; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .icon-btn { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: var(--paper-raised); border: 1px solid var(--line); color: var(--ink-soft); border-radius: 8px; }
+  .icon-btn:hover { color: var(--ink); border-color: var(--ink-faint); }
+  .icon-btn svg { width: 17px; height: 17px; }
+
+  .filter-bar { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 20px; }
+  .filter-fields { display: flex; gap: 14px; flex-wrap: wrap; }
+  .filter-field label { display: block; font-size: 11.5px; color: var(--ink-faint); margin-bottom: 6px; }
+  .filter-field input[type="date"] { font-family: var(--font-body); font-size: 13.5px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: var(--ink); outline: none; }
+  .filter-field input[type="date"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .filter-stat { text-align: right; }
+  .filter-stat .label { font-size: 11.5px; color: var(--ink-soft); margin-bottom: 4px; }
+  .filter-stat .num { font-family: var(--font-num); font-weight: 500; font-size: 30px; letter-spacing: -0.02em; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+  .table-wrap { background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { text-align: left; font-size: 11.5px; font-weight: 500; color: var(--ink-faint); padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  thead th.num-col, td.num-col { text-align: right; width: 220px; }
+  tbody td { padding: 13px 14px; border-bottom: 1px solid var(--line-soft); font-size: 14px; vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  .rtype-name { font-weight: 500; }
+  .count-pill { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 13.5px; }
+  .count-pill.zero { opacity: .55; }
+  tfoot td { padding: 13px 14px; font-weight: 600; font-size: 13.5px; border-top: 1px solid var(--line); }
+  tfoot .num-col { font-family: var(--font-num); text-align: right; font-variant-numeric: tabular-nums; }
+
+  .qty-cell { display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
+  .avail-pill { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .pill-avail { background: var(--st-available-bg); color: var(--st-available); }
+  .pill-selling { background: var(--st-unconfirmed-bg); color: var(--st-unconfirmed); }
+  .pill-last { background: var(--st-unavailable-bg); color: var(--st-unavailable); }
+  .pill-none { background: var(--line-soft); color: var(--ink-faint); }
+  .gender-split { font-size: 11.5px; color: var(--ink-faint); margin-top: 5px; }
+  .gender-split .g-male { color: var(--st-arrived); font-weight: 500; }
+  .gender-split .g-female { color: var(--st-confirmed); font-weight: 500; }
+  .gender-split .g-full { color: var(--accent); font-weight: 500; }
+  .gender-split .g-conflict { color: var(--st-unconfirmed); font-weight: 500; }
+
+  .empty-state { padding: 64px 24px; text-align: center; }
+  .empty-state h2 { font-family: var(--font-head); font-size: 19px; margin: 0 0 8px; }
+  .empty-state p { color: var(--ink-soft); font-size: 14px; max-width: 380px; margin: 0 auto 20px; line-height: 1.5; }
+
+  .meta-line { font-size: 12px; color: var(--ink-faint); margin-top: 14px; }
+  .unmapped-note { font-size: 12px; color: var(--st-unconfirmed); margin-top: 10px; line-height: 1.5; }
+
+  .console-back { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-soft); font-size: 13px; background: none; border: none; padding: 0; margin-bottom: 22px; }
+  .console-back:hover { color: var(--ink); }
+  .console-back svg { width: 15px; height: 15px; }
+  .console-head h1 { font-family: var(--font-head); font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  .console-head p { color: var(--ink-soft); font-size: 13.5px; margin: 0 0 26px; max-width: 480px; line-height: 1.5; }
+
+  .field-group { background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; margin-bottom: 16px; }
+  .field-group h3 { font-size: 13px; font-weight: 600; margin: 0 0 16px; color: var(--ink-soft); }
+  .field { margin-bottom: 16px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+  .field .hint { font-size: 12px; color: var(--ink-faint); margin-top: 5px; line-height: 1.4; }
+  .field input { width: 100%; font-family: var(--font-body); font-size: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: var(--ink); outline: none; }
+  .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+  .env-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line-soft); font-size: 13.5px; }
+  .env-row:last-child { border-bottom: none; }
+  .env-row .k { color: var(--ink-soft); }
+  .env-row .v { font-family: var(--font-num); font-size: 12.5px; }
+  .env-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; }
+  .env-badge.ok { color: var(--st-available); }
+  .env-badge.missing { color: var(--st-unavailable); }
+  .env-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .console-actions { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
+  .btn-ghost { background: var(--paper-raised); border: 1px solid var(--line); color: var(--ink); padding: 9px 16px; font-weight: 500; }
+  .btn-ghost:hover { border-color: var(--ink-faint); }
+  .save-toast { font-size: 12.5px; color: var(--accent-ink); opacity: 0; transition: opacity .3s; }
+  .save-toast.show { opacity: 1; }
+
+  .test-result { margin-top: 14px; padding: 11px 13px; border-radius: 7px; font-size: 12.5px; line-height: 1.5; display: none; white-space: pre-wrap; }
+  .test-result.show { display: block; }
+  .test-result.ok { background: var(--st-available-bg); color: var(--st-available); }
+  .test-result.err { background: var(--st-unavailable-bg); color: var(--st-unavailable); }
+  .test-result.info { background: var(--line-soft); color: var(--ink-soft); }
+
+  @media (max-width: 640px) {
+    .shell { padding: 20px 14px 48px; }
+    thead th.num-col, td.num-col { width: auto; }
+    .table-wrap { overflow-x: auto; }
+    table { min-width: 520px; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function () {
+  "use strict";
+
+  var KNOWN_ROOM_TYPES = ["Studio Premium (High)", "Studio Premium (Low)", "3 Bedroom (High)", "3 Bedroom (Low)", "Ensuite Premium", "2 Bedroom (High)", "2 Bedroom (Low)"];
+  function isSharedTypeName(name) { return name.indexOf("2 Bedroom") === 0 || name.indexOf("3 Bedroom") === 0; }
+
+  function todayISO() { return new Date().toISOString().slice(0, 10); }
+  function addDaysISO(iso, days) {
+    var d = new Date(iso + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  var state = {
+    view: "main",
+    propertyName: "",
+    connection: null,     // { baseUrl, propertyId, jwtConfigured }
+    rooms: [],
+    syncedAt: null,
+    nextSyncAllowedAt: 0,
+    loading: true,
+    syncing: false,
+    testing: false,
+    testResult: null,     // { ok, text }
+    dateRange: { start: todayISO(), end: addDaysISO(todayISO(), 30) },
+    dateRangeError: null
+  };
+
+  // ---- API ----
+  function api(path, opts) {
+    return fetch(path, opts).then(function (res) {
+      return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; });
+    });
+  }
+
+  function loadAll() {
+    state.loading = true;
+    render();
+    Promise.all([api("/api/config"), api("/api/availability")]).then(function (results) {
+      var cfg = results[0], avail = results[1];
+      if (cfg.ok) state.propertyName = cfg.body.propertyName || "";
+      if (avail.ok) {
+        state.rooms = avail.body.rooms || [];
+        state.syncedAt = avail.body.syncedAt || null;
+        state.nextSyncAllowedAt = avail.body.nextSyncAllowedAt || 0;
+        state.connection = avail.body.connection || null;
+      }
+      state.loading = false;
+      render();
+    }).catch(function () {
+      state.loading = false;
+      render();
+    });
+  }
+
+  // ---- availability logic ----
+  function isRoomAvailableForRange(r, start, end) {
+    if (r.status === "unavailable") return false;
+    if (r.status === "available") {
+      if (!start || !end || !r.availableUntil) return true;
+      return end <= r.availableUntil;
+    }
+    if (!start || !end) return false;
+    if (!r.leaseStart || !r.leaseEnd) return false;
+    return end < r.leaseStart || start > r.leaseEnd;
+  }
+
+  function computeAvailability(rooms, start, end) {
+    var byType = {}, genderByType = {}, unmapped = {};
+    KNOWN_ROOM_TYPES.forEach(function (t) {
+      byType[t] = 0;
+      genderByType[t] = { male: 0, female: 0, fullUnit: 0, conflicts: 0 };
+    });
+    var total = 0;
+    var unitGroups = {};
+
+    rooms.forEach(function (r) {
+      var type = r.roomType;
+      var known = KNOWN_ROOM_TYPES.indexOf(type) !== -1;
+      if (!known) { unmapped[type || "(missing room type)"] = (unmapped[type || "(missing room type)"] || 0) + 1; return; }
+
+      var available = isRoomAvailableForRange(r, start, end);
+      if (available) { byType[type] += 1; total += 1; }
+
+      if (isSharedTypeName(type) && r.shared) {
+        var key = type + "|" + r.unitKey;
+        if (!unitGroups[key]) unitGroups[key] = { type: type, size: 0, availableCount: 0, genders: {} };
+        unitGroups[key].size += 1;
+        if (available) unitGroups[key].availableCount += 1;
+        if (r.gender) unitGroups[key].genders[r.gender] = true;
+      }
+    });
+
+    Object.keys(unitGroups).forEach(function (key) {
+      var grp = unitGroups[key];
+      var genders = Object.keys(grp.genders);
+      if (genders.length > 1) {
+        genderByType[grp.type].conflicts += 1;
+      } else if (genders.length === 1) {
+        genderByType[grp.type][genders[0]] += grp.availableCount;
+      } else if (grp.availableCount === grp.size) {
+        genderByType[grp.type].fullUnit += 1;
+      }
+    });
+
+    return { byType: byType, total: total, genderByType: genderByType, unmapped: unmapped };
+  }
+
+  function availabilityPill(n) {
+    if (n > 10) return { label: "Available", cls: "pill-avail" };
+    if (n >= 6) return { label: "Selling fast", cls: "pill-selling" };
+    if (n >= 1) return { label: "Last " + n + (n === 1 ? " room" : " rooms"), cls: "pill-last" };
+    return { label: "Unavailable", cls: "pill-none" };
+  }
+
+  function fmtAgo(iso) {
+    if (!iso) return "never";
+    var s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return "just now";
+    var m = Math.floor(s / 60);
+    if (m < 60) return m + " min ago";
+    var h = Math.floor(m / 60);
+    if (h < 24) return h + " hr ago";
+    return Math.floor(h / 24) + " day ago";
+  }
+
+  function icon(name) {
+    if (name === "gear") return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 0 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"></path></svg>';
+    if (name === "back") return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M15 18l-6-6 6-6"></path></svg>';
+    return "";
+  }
+
+  function escapeHtml(str) {
+    return String(str == null ? "" : str).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function escapeAttr(str) { return escapeHtml(str); }
+
+  function render() {
+    var app = document.getElementById("app");
+    app.innerHTML = state.view === "setup" ? renderSetup() : renderMain();
+    bindEvents();
+  }
+
+  function renderMain() {
+    var html = '<div class="shell">';
+    var connected = !!(state.connection && state.connection.jwtConfigured && state.connection.propertyId);
+
+    html += '<div class="topbar"><div><h1>' + escapeHtml(state.propertyName || "Availability Simulator") + '</h1>';
+    if (state.loading) {
+      html += '<div class="conn-row"><span class="conn-pip"></span>Loading…</div>';
+    } else if (connected) {
+      html += '<div class="conn-row"><span class="conn-pip on"></span>Connected · synced ' + fmtAgo(state.syncedAt) + '</div>';
+    } else {
+      html += '<div class="conn-row"><span class="conn-pip off"></span>Not configured — set environment variables</div>';
+    }
+    html += '</div><div class="topbar-actions">';
+    var cooldownActive = state.nextSyncAllowedAt && Date.now() < state.nextSyncAllowedAt;
+    html += '<button class="btn-primary" id="sync-btn"' + (state.syncing || cooldownActive ? " disabled" : "") + '>' +
+      (state.syncing ? '<span class="spin"></span>Syncing' : (cooldownActive ? "Synced recently" : "Sync rooms")) + '</button>';
+    html += '<button class="icon-btn" id="gear-btn" title="Setup">' + icon("gear") + '</button></div></div>';
+
+    if (state.loading) { html += '</div>'; return html; }
+
+    if (!state.rooms.length) {
+      html += '<div class="table-wrap"><div class="empty-state"><h2>No data yet</h2>';
+      html += '<p>Run a sync to pull live room occupancy from YSuite, or open setup to check the connection.</p>';
+      html += '<button class="btn-primary" id="empty-sync-btn"' + (cooldownActive ? " disabled" : "") + '>Sync rooms</button></div></div></div>';
+      return html;
+    }
+
+    var effStart = state.dateRange.start, effEnd = state.dateRange.end;
+    if (effStart && effEnd && effStart > effEnd) { var tmp = effStart; effStart = effEnd; effEnd = tmp; }
+    var avail = computeAvailability(state.rooms, effStart, effEnd);
+
+    html += '<div class="filter-bar"><div class="filter-fields">';
+    html += '<div class="filter-field"><label for="f-start">Start date</label><input type="date" id="f-start" value="' + escapeAttr(state.dateRange.start) + '"></div>';
+    html += '<div class="filter-field"><label for="f-end">End date</label><input type="date" id="f-end" value="' + escapeAttr(state.dateRange.end) + '"></div>';
+    html += '</div><div class="filter-stat"><div class="label">Available rooms</div><div class="num">' + avail.total + '</div></div></div>';
+    if (state.dateRangeError) html += '<div class="test-result show info" style="margin-bottom:16px">' + escapeHtml(state.dateRangeError) + '</div>';
+
+    html += '<div class="table-wrap"><table><thead><tr><th>Room type</th><th class="num-col">Available</th></tr></thead><tbody>';
+    KNOWN_ROOM_TYPES.forEach(function (name) {
+      var n = avail.byType[name];
+      var pill = availabilityPill(n);
+      html += '<tr><td><div class="rtype-name">' + escapeHtml(name) + '</div>';
+      if (isSharedTypeName(name)) {
+        var g = avail.genderByType[name];
+        var parts = ['<span class="g-male">M ' + g.male + '</span>', '<span class="g-female">F ' + g.female + '</span>'];
+        if (g.fullUnit > 0) parts.push('<span class="g-full">Full Unit ' + g.fullUnit + '</span>');
+        if (g.conflicts > 0) parts.push('<span class="g-conflict">⚠ ' + g.conflicts + ' mismatched</span>');
+        html += '<div class="gender-split">Shared unit · ' + parts.join(' · ') + '</div>';
+      }
+      html += '</td><td class="num-col"><div class="qty-cell"><span class="avail-pill ' + pill.cls + '">' + pill.label + '</span><span class="count-pill' + (n === 0 ? " zero" : "") + '" style="color:var(--ink);font-weight:600">' + n + '</span></div></td></tr>';
+    });
+    html += '</tbody><tfoot><tr><td>All room types</td><td class="num-col">' + avail.total + '</td></tr></tfoot></table></div>';
+
+    var unmappedKeys = Object.keys(avail.unmapped);
+    if (unmappedKeys.length) {
+      html += '<div class="unmapped-note">⚠ ' + unmappedKeys.length + ' room type(s) from YSuite didn\'t match the 7 configured names, so they\'re excluded above: ' +
+        unmappedKeys.map(function (k) { return escapeHtml(k) + ' (' + avail.unmapped[k] + ')'; }).join(', ') + '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function renderSetup() {
+    var conn = state.connection || {};
+    var html = '<div class="shell">';
+    html += '<button class="console-back" id="back-btn">' + icon("back") + 'Back</button>';
+    html += '<div class="console-head"><h1>Setup console</h1><p>Property ID, the YSuite API base URL, and the JWT are set as Netlify environment variables, not here — they never touch the browser. Property name is the one field stored and editable at runtime.</p></div>';
+
+    html += '<div class="field-group"><h3>Property</h3>';
+    html += '<div class="field"><label for="f-propertyName">Property name</label><input id="f-propertyName" type="text" value="' + escapeAttr(state.propertyName) + '" placeholder="e.g. Y Suites on Margaret"></div></div>';
+
+    html += '<div class="field-group"><h3>Connection (from environment)</h3>';
+    html += '<div class="env-row"><span class="k">API base URL</span><span class="v">' + escapeHtml(conn.baseUrl || "—") + '</span></div>';
+    html += '<div class="env-row"><span class="k">Property ID</span><span class="v">' + (conn.propertyId ? escapeHtml(conn.propertyId) : '<span class="env-badge missing"><span class="dot"></span>Not set</span>') + '</span></div>';
+    html += '<div class="env-row"><span class="k">JWT</span><span>' + (conn.jwtConfigured ? '<span class="env-badge ok"><span class="dot"></span>Configured</span>' : '<span class="env-badge missing"><span class="dot"></span>Not set</span>') + '</span></div>';
+    html += '</div>';
+
+    html += '<div class="console-actions">';
+    html += '<button class="btn-primary" id="save-btn">Save changes</button>';
+    html += '<button class="btn-ghost" id="test-btn"' + (state.testing ? " disabled" : "") + '>' + (state.testing ? "Testing…" : "Test connection") + '</button>';
+    html += '<span class="save-toast" id="save-toast">Saved</span></div>';
+    if (state.testResult) {
+      html += '<div class="test-result show ' + (state.testResult.ok ? "ok" : "err") + '">' + escapeHtml(state.testResult.text) + '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function doSync(onDone) {
+    state.syncing = true; render();
+    api("/api/availability", { method: "POST" }).then(function (res) {
+      state.syncing = false;
+      if (res.ok) {
+        state.rooms = res.body.rooms || [];
+        state.syncedAt = res.body.syncedAt || null;
+        state.nextSyncAllowedAt = res.body.nextSyncAllowedAt || 0;
+        state.connection = res.body.connection || state.connection;
+      }
+      if (onDone) onDone(res);
+      render();
+    }).catch(function () { state.syncing = false; render(); });
+  }
+
+  function bindEvents() {
+    var gearBtn = document.getElementById("gear-btn");
+    if (gearBtn) gearBtn.addEventListener("click", function () { state.view = "setup"; state.testResult = null; render(); });
+
+    var backBtn = document.getElementById("back-btn");
+    if (backBtn) backBtn.addEventListener("click", function () { state.view = "main"; render(); });
+
+    var syncBtn = document.getElementById("sync-btn");
+    if (syncBtn) syncBtn.addEventListener("click", function () { doSync(); });
+    var emptySyncBtn = document.getElementById("empty-sync-btn");
+    if (emptySyncBtn) emptySyncBtn.addEventListener("click", function () { doSync(); });
+
+    var startInp = document.getElementById("f-start"), endInp = document.getElementById("f-end");
+    function onDateChange() {
+      var start = startInp.value, end = endInp.value;
+      state.dateRangeError = (start && end && start > end)
+        ? "Start date is after end date — treating the range as " + (end < start ? end + " to " + start : start + " to " + end) + "."
+        : null;
+      state.dateRange = { start: start, end: end };
+      render();
+    }
+    if (startInp) startInp.addEventListener("change", onDateChange);
+    if (endInp) endInp.addEventListener("change", onDateChange);
+
+    var saveBtn = document.getElementById("save-btn");
+    if (saveBtn) saveBtn.addEventListener("click", function () {
+      var propertyName = document.getElementById("f-propertyName").value.trim();
+      api("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ propertyName: propertyName }) })
+        .then(function (res) {
+          if (res.ok) state.propertyName = res.body.propertyName || "";
+          var toast = document.getElementById("save-toast");
+          if (toast) { toast.classList.add("show"); setTimeout(function () { toast.classList.remove("show"); }, 1800); }
+        });
+    });
+
+    var testBtn = document.getElementById("test-btn");
+    if (testBtn) testBtn.addEventListener("click", function () {
+      state.testing = true; state.testResult = null; render();
+      api("/api/availability", { method: "POST" }).then(function (res) {
+        state.testing = false;
+        if (res.ok) {
+          state.rooms = res.body.rooms || [];
+          state.syncedAt = res.body.syncedAt || null;
+          state.nextSyncAllowedAt = res.body.nextSyncAllowedAt || 0;
+          state.connection = res.body.connection || state.connection;
+          state.testResult = { ok: true, text: "Connected — " + state.rooms.length + " rooms returned from YSuite." };
+        } else {
+          state.testResult = { ok: false, text: (res.body && res.body.error) || ("Request failed (" + res.status + ")") };
+        }
+        render();
+      }).catch(function (err) {
+        state.testing = false;
+        state.testResult = { ok: false, text: "Request failed: " + err.message };
+        render();
+      });
+    });
+  }
+
+  loadAll();
+})();
+</script>
+</body>
+</html>

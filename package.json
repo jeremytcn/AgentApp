@@ -1,0 +1,9 @@
+{
+  "name": "ysuites-availability-simulator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone single-property room availability simulator, pulling live occupancy from YSuite's RMS middleware.",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}
