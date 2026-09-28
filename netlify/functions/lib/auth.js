@@ -23,7 +23,21 @@ const crypto = require('crypto');
 const { getStore } = require('@netlify/blobs');
 
 const STORE_NAME = 'simulator-settings';
-function store() { return getStore(STORE_NAME); }
+// No siteID/token by default: inside a normal Netlify Function (production,
+// or `netlify dev` in most setups), Blobs context is auto-injected and
+// getStore(name) alone is correct. Some environments don't reach that
+// auto-injection (seen in practice on this deployment, not just local dev
+// - the same fallback other functions here already use), even though
+// NETLIFY_SITE_ID/NETLIFY_BLOBS_TOKEN are still available as plain env
+// vars in that case - so use those explicitly when present, and only then.
+function store() {
+  const siteID = process.env.NETLIFY_SITE_ID;
+  const token = process.env.NETLIFY_BLOBS_TOKEN;
+  if (siteID && token) {
+    return getStore({ name: STORE_NAME, siteID, token });
+  }
+  return getStore(STORE_NAME);
+}
 
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 const ROLES = ['admin', 'internal', 'agent'];
