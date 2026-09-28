@@ -75,6 +75,30 @@ function computeAvailableUntil(nextArrival) {
   return until;
 }
 
+// Unavailable until = 7 days after lease end. Used for booked rooms; a room
+// that's Unavailable for maintenance/OOO reasons uses the RMS's own
+// unavailableUntil value instead (no lease to derive from).
+function computeUnavailableUntil(leaseEnd) {
+  if (!leaseEnd) return null;
+  return addDaysYmd(leaseEnd, 7);
+}
+
+function guestFullName(reservation) {
+  if (!reservation) return null;
+  const given = String(reservation.guestGiven || '').trim();
+  const surname = String(reservation.guestSurname || '').trim();
+  const full = [given, surname].filter(Boolean).join(' ');
+  return full || null;
+}
+
+function nightsBetween(arrival, departure) {
+  if (!arrival || !departure) return null;
+  const a = new Date(String(arrival).replace(' ', 'T'));
+  const b = new Date(String(departure).replace(' ', 'T'));
+  if (isNaN(a.getTime()) || isNaN(b.getTime())) return null;
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
 module.exports = {
   normalizeStatus,
   statusKey,
@@ -82,5 +106,8 @@ module.exports = {
   formatYmd,
   addDaysYmd,
   todayYmd,
-  computeAvailableUntil
+  computeAvailableUntil,
+  computeUnavailableUntil,
+  guestFullName,
+  nightsBetween
 };

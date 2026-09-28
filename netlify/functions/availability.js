@@ -2,10 +2,9 @@
 //
 // Single-property version of the Room Availability Dashboard's sync
 // function, trimmed down for this standalone simulator - no multi-property
-// switching, no admin/view-only session model. It's meant for Jeremy's own
-// use, so there's no login of any kind here; if this ever needs to be
-// shared more broadly, put it behind Netlify's site-wide password
-// protection or a proper auth layer before that happens.
+// switching. Requires a valid session (any role - Admin, Internal, and
+// Agent can all view/sync room data, since Availability is the one tab
+// every role gets); see lib/auth.js.
 //
 // GET  /api/availability
 //   Returns the last-synced rooms from Blobs (no live API call), plus
@@ -19,24 +18,43 @@
 //
 // POST {YSUITE_API_BASE_URL}/room-types/check-room-occupancy
 // Authorization: Bearer <YSUITE_JWT>
-// Body: { "propertyId": "<YSUITE_PROPERTY_ID>" }
+// Body: { "propertyId": "<from Setup > Property Information>" }
 //
-// All three of YSUITE_API_BASE_URL, YSUITE_JWT, and YSUITE_PROPERTY_ID are
-// Netlify environment variables (see .env.example) - never stored in Blobs,
-// never sent to the browser.
+// YSUITE_API_BASE_URL and YSUITE_JWT are Netlify environment variables
+// (see .env.example) - never stored in Blobs, never sent to the browser.
+// Property ID is NOT an environment variable - it's read from rates.js's
+// stored property.propertyId (Setup > Property Information), the same
+// value the merged Setup Console shows and edits. This means whoever can
+// edit that field controls which property the live sync hits, which is a
+// deliberate trade rather than an oversight: unlike the JWT, a property ID
+// isn't a credential - it's an identifier - and keeping it in one place
+// (rather than an env var that has to independently match whatever's
+// typed into Property Information) removes a way for the two to silently
+// drift apart. Editing Property Information (and therefore this) is
+// admin-only, same as every other Setup Console write - see rates.js.
 
 const { getStore } = require('@netlify/blobs');
 const { mapRoom } = require('./lib/room-mapper');
+const { requireSession } = require('./lib/auth');
 
 const DEFAULT_API_BASE = 'https://middleware.ysuites.co';
 const SYNC_COOLDOWN_MS = 2 * 60 * 1000;
 
+// No siteID/token by default: inside a normal Netlify Function (production,
+// or `netlify dev` in most setups), Blobs context is auto-injected and
+// getStore(name) alone is correct. Some local `netlify dev` runs load
+// functions in an older "Lambda compatibility mode" where that
+// auto-injection doesn't reach the function, even though netlify dev DOES
+// still inject NETLIFY_SITE_ID/NETLIFY_BLOBS_TOKEN as plain env vars in
+// that case (from the linked site's project settings) - so use those
+// explicitly when present, and only then.
 function store() {
-  return getStore({
-    name: 'simulator-settings',
-    siteID: process.env.NETLIFY_SITE_ID,
-    token: process.env.NETLIFY_BLOBS_TOKEN
-  });
+  const siteID = process.env.NETLIFY_SITE_ID;
+  const token = process.env.NETLIFY_BLOBS_TOKEN;
+  if (siteID && token) {
+    return getStore({ name: 'simulator-settings', siteID, token });
+  }
+  return getStore('simulator-settings');
 }
 
 function apiBaseUrl() {
@@ -44,13 +62,21 @@ function apiBaseUrl() {
   return raw || DEFAULT_API_BASE;
 }
 
+// Reads the Setup Console's stored Property ID - the same 'rate-config'
+// blob rates.js owns, read directly here rather than through an HTTP call
+// to that function, since both share the same Blobs store.
+async function getConfiguredPropertyId() {
+  const config = await store().get('rate-config', { type: 'json' });
+  return (config && config.property && config.property.propertyId) || '';
+}
+
 // Non-secret connection info the frontend can safely display: the base URL
 // and property ID aren't sensitive, and this only ever reports WHETHER the
 // JWT is set - never its value.
-function connectionInfo() {
+async function connectionInfo() {
   return {
     baseUrl: apiBaseUrl(),
-    propertyId: (process.env.YSUITE_PROPERTY_ID || '').trim(),
+    propertyId: await getConfiguredPropertyId(),
     jwtConfigured: Boolean((process.env.YSUITE_JWT || '').trim())
   };
 }
@@ -90,12 +116,12 @@ async function recordSyncNow() {
 // changes here.
 async function syncFromYSuite() {
   const jwt = (process.env.YSUITE_JWT || '').trim();
-  const propertyId = (process.env.YSUITE_PROPERTY_ID || '').trim();
+  const propertyId = await getConfiguredPropertyId();
   const base = apiBaseUrl();
   console.log(`availability sync: base=${base} propertyId=${propertyId || '(none)'} jwtSet=${Boolean(jwt)}`);
 
   if (!jwt) throw new Error('No YSUITE_JWT configured in environment');
-  if (!propertyId) throw new Error('No YSUITE_PROPERTY_ID configured in environment');
+  if (!propertyId) throw new Error('No Property ID set - add one in Setup > Property Information');
 
   const res = await fetch(`${base}/room-types/check-room-occupancy`, {
     method: 'POST',
@@ -121,6 +147,14 @@ async function syncFromYSuite() {
 exports.handler = async function handler(event) {
   const method = event.httpMethod || 'GET';
 
+  // Every role (admin, internal, agent) can read/sync room data - the
+  // Availability tab is the one thing every role gets, so this just needs
+  // *a* valid session, not any specific role.
+  const session = await requireSession(event);
+  if (!session) {
+    return { statusCode: 401, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Not logged in.' }) };
+  }
+
   try {
     if (method === 'GET') {
       const { rooms, syncedAt } = await getSyncedRooms();
@@ -129,7 +163,7 @@ exports.handler = async function handler(event) {
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rooms, syncedAt, nextSyncAllowedAt, connection: connectionInfo() })
+        body: JSON.stringify({ rooms, syncedAt, nextSyncAllowedAt, connection: await connectionInfo() })
       };
     }
 
@@ -153,7 +187,7 @@ exports.handler = async function handler(event) {
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rooms, syncedAt, nextSyncAllowedAt, connection: connectionInfo() })
+        body: JSON.stringify({ rooms, syncedAt, nextSyncAllowedAt, connection: await connectionInfo() })
       };
     }
 
